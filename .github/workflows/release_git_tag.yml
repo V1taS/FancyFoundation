@@ -1,0 +1,52 @@
+name: Create and push Release git tag
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  release_git_tag:
+    runs-on: macos-latest
+    if: "!contains(github.event.head_commit.message, 'Update versions')"
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Set up Ruby
+      uses: ruby/setup-ruby@v1
+      with:
+        ruby-version: 2.7
+
+    - name: Set up Python
+      uses: actions/setup-python@v3
+      with:
+        python-version: 3.x
+
+    - name: Download App versions from SosinVitalii.com server
+      run: |
+        curl --ssl-reqd --insecure --user ${{ secrets.FTP_USERNAME }}:${{ secrets.FTP_PASSWORD }} -O "ftp://${{ secrets.FTP_SERVER }}/fancy_foundation_versions.json"
+
+    - name: Increase App version and build number
+      run: |
+        python Scripts/update_version_and_build_number.py
+
+    - name: Upload App versions to SosinVitalii.com server
+      run: |
+        curl --ssl-reqd --insecure --user ${{ secrets.FTP_USERNAME }}:${{ secrets.FTP_PASSWORD }} -T "./fancy_foundation_versions.json" "ftp://${{ secrets.FTP_SERVER }}/fancy_foundation_versions.json"
+
+    - name: Get MARKETING_VERSION and CURRENT_PROJECT_VERSION
+      run: |
+        echo "MARKETING_VERSION=$(jq -r '.marketing_version' fancy_foundation_versions.json)" >> $GITHUB_ENV
+        echo "CURRENT_PROJECT_VERSION=$(jq -r '.current_project_version' fancy_foundation_versions.json)" >> $GITHUB_ENV
+
+    - name: Create and push Release git tag
+      run: |
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+        git config --global user.name "GitHub Actions Bot"
+        git checkout ${GITHUB_HEAD_REF}
+        git tag "${{ env.MARKETING_VERSION }}"
+        git push --tags
+      env:
+        GITHUB_TOKEN: ${{ secrets.TOKEN_GITHUB }}
